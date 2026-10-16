@@ -1,0 +1,8 @@
+# VETAI Proposal Studio — зависимости
+# Текущий этап: каркас приложения, SQLite и форма брифа.
+
+streamlit>=1.30,<2
+python-dotenv>=1.0,<2
+
+# ReportLab понадобится на этапе экспорта PDF (пока не используется).
+reportlab>=4.0,<5

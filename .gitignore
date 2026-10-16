@@ -1,0 +1,27 @@
+# Секреты
+.env
+.env.*
+!.env.example
+
+# Локальные базы данных
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Виртуальные окружения
+.venv/
+venv/
+env/
+
+# Инструменты
+.pytest_cache/
+.coverage
+htmlcov/
