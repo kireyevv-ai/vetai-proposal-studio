@@ -26,6 +26,16 @@ SCREENS: tuple[str, ...] = (
 )
 
 
+def _on_nav_change() -> None:
+    target = st.session_state.get("nav_screen")
+    if not st.session_state.get("unsaved_changes"):
+        return
+    if target == SCREEN_DRAFT:
+        return
+    st.session_state["nav_screen"] = SCREEN_DRAFT
+    st.session_state["nav_blocked_target"] = target
+
+
 def render_navigation() -> str:
     """Нарисовать боковую навигацию и вернуть выбранный экран."""
     # Переход на другой экран, запрошенный предыдущим запуском (например, после
@@ -34,13 +44,16 @@ def render_navigation() -> str:
     pending = st.session_state.pop("pending_screen", None)
     if pending in SCREENS:
         st.session_state["nav_screen"] = pending
+    # Снять флаг заблокированного перехода при явном навигации
+    st.session_state.pop("nav_blocked_target", None)
 
     st.sidebar.title(APP_TITLE)
     st.sidebar.caption("Учебный AI-конструктор коммерческих предложений")
-    choice = st.sidebar.radio("Навигация", SCREENS, key="nav_screen")
+    choice = st.sidebar.radio(
+        "Навигация", SCREENS, key="nav_screen", on_change=_on_nav_change
+    )
     st.sidebar.divider()
     st.sidebar.caption(
-        "Реализованы: бриф, генерация черновика, прайс и шаблон КП "
-        "(экран «Настройки»). Редактор и PDF будут реализованы на следующих этапах."
+        "Этап №5: редактор КП, версии, предпросмотр и экспорт PDF, история КП."
     )
     return choice

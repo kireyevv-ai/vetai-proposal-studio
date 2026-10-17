@@ -248,5 +248,6 @@ def _handle_generation(brief: Brief) -> None:
             f"Черновик КП сгенерирован (версия {result.version}, "
             f"провайдер «{result.provider}»)."
         )
+        st.session_state.pop("preview_version_id", None)
         st.session_state["pending_screen"] = navigation.SCREEN_DRAFT
         st.rerun()

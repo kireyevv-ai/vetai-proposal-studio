@@ -118,15 +118,15 @@ def test_brief_with_empty_price_list_shows_hint(monkeypatch, tmp_path) -> None:
 @pytest.mark.parametrize(
     ("screen", "marker"),
     [
-        ("Предпросмотр и PDF", "разработке"),
-        ("История КП", "разработке"),
+        ("Предпросмотр и PDF", "нет сохранённого"),
+        ("История КП", "сохранённых коммерческих предложений"),
     ],
 )
-def test_unimplemented_screens_report_status(
+def test_implemented_screens_show_info(
     app: AppTest, screen: str, marker: str
 ) -> None:
     app.radio[0].set_value(screen)
     app.run()
 
     assert not app.exception
-    assert any(marker in warn.value.lower() for warn in app.warning)
+    assert any(marker in info.value.lower() for info in app.info)

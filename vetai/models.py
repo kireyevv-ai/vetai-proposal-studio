@@ -105,6 +105,7 @@ CODE_SECTION_KEYS: frozenset[str] = frozenset({"pricing", "deadlines"})
 SOURCE_MODEL = "model"  # текст сгенерирован AI-провайдером из данных брифа
 SOURCE_CODE = "code"  # раздел сформирован программно из доверенных данных
 SOURCE_PLACEHOLDER = "placeholder"  # нет доверенных данных — «требует уточнения»
+SOURCE_MANUAL = "manual"  # текст введён/отредактирован менеджером в редакторе (REQ-16)
 
 
 @dataclass(frozen=True)

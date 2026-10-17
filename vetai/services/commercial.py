@@ -144,3 +144,49 @@ def warnings_for(data: CommercialData) -> list[str]:
             "календарные дни / недели / месяцы) — раздел «Сроки» требует уточнения."
         )
     return warnings
+
+
+def data_from_snapshot(snapshot: dict) -> CommercialData:
+    items: list[CommercialItem] = []
+    for raw in snapshot.get("items", []) or []:
+        if not isinstance(raw, dict):
+            continue
+        price = raw.get("price_kopeks")
+        items.append(
+            CommercialItem(name=str(raw.get("name", "")), price_kopeks=price)
+        )
+    deadlines_text = str(snapshot.get("deadlines", "") or "")
+    value, unit = parse_deadline(deadlines_text)
+    return CommercialData(
+        items=items,
+        total_kopeks=snapshot.get("total_kopeks"),
+        missing=[str(x) for x in (snapshot.get("missing", []) or [])],
+        deadlines_text=deadlines_text,
+        deadlines_value=value,
+        deadlines_unit=unit,
+        deadlines_ambiguous=value is not None and unit is None,
+    )
+
+
+def expected_sections(snapshot: dict) -> dict[str, str]:
+    """Ожидаемый текст коммерческих разделов из снимка доверенных данных."""
+    if not snapshot:
+        return {}
+    data = data_from_snapshot(snapshot)
+    return {
+        "pricing": render_price_section(data),
+        "deadlines": render_deadline_section(data.deadlines_text),
+    }
+
+
+def build_snapshot(data: CommercialData, deadlines_text: str) -> dict:
+    return {
+        "currency": "RUB",
+        "items": [
+            {"name": item.name, "price_kopeks": item.price_kopeks}
+            for item in data.items
+        ],
+        "total_kopeks": data.total_kopeks,
+        "missing": list(data.missing),
+        "deadlines": deadlines_text,
+    }
