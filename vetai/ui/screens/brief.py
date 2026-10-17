@@ -1,7 +1,9 @@
 """Экран «Бриф».
 
 Форма ввода данных клиента и проекта, валидация обязательных полей и
-сохранение брифа в SQLite (REQ-01..REQ-05, REQ-36).
+сохранение брифа в SQLite (REQ-01..REQ-05, REQ-36). Услуги выбираются из
+прайса (OQ-06: после реализации прайса — выбор из него, а не из временного
+каталога); сохранённые брифы при изменении прайса не переписываются.
 """
 
 from __future__ import annotations
@@ -9,9 +11,7 @@ from __future__ import annotations
 import streamlit as st
 
 from vetai.models import Brief
-from vetai.repositories import brief_repository
-from vetai.services import training_catalog
-from vetai.services.training_catalog import TRAINING_CATALOG_NOTE, service_names
+from vetai.repositories import brief_repository, price_repository
 from vetai.validation import missing_required_labels, validate_brief
 
 _STATE_KEYS = (
@@ -27,7 +27,8 @@ def ensure_state() -> None:
     """Один раз инициализировать поля формы, восстановив последний бриф.
 
     Восстановление после перезапуска приложения (критерий G): значения берутся
-    из базы, а не теряются.
+    из базы, а не теряются. Услуги брифа **не фильтруются** по текущему прайсу,
+    чтобы архивные/переименованные позиции не пропадали из сохранённых брифов.
     """
     if st.session_state.get("_brief_state_initialized"):
         return
@@ -36,9 +37,7 @@ def ensure_state() -> None:
     if saved is not None:
         st.session_state["brief_client"] = saved.client
         st.session_state["brief_task"] = saved.task
-        st.session_state["brief_services"] = training_catalog.filter_known(
-            list(saved.services)
-        )
+        st.session_state["brief_services"] = list(saved.services)
         st.session_state["brief_deadlines"] = saved.deadlines
         st.session_state["brief_budget"] = saved.budget
         st.session_state["brief_restored_id"] = saved.id
@@ -47,6 +46,25 @@ def ensure_state() -> None:
             st.session_state.setdefault(key, "" if key != "brief_services" else [])
 
     st.session_state["_brief_state_initialized"] = True
+
+
+def _service_options() -> tuple[list[str], list[str]]:
+    """Варианты мультивыбора услуг.
+
+    Активные позиции прайса + услуги, уже выбранные в состоянии формы, но
+    отсутствующие в активном прайсе (архивные/переименованные) — чтобы выбор
+    сохранённого брифа не терялся и сам бриф не менялся.
+    """
+    active_names = [
+        item.name for item in price_repository.list_price_items()
+    ]
+    active_set = set(active_names)
+    kept_extra = [
+        name
+        for name in st.session_state.get("brief_services", [])
+        if name not in active_set
+    ]
+    return active_names, kept_extra
 
 
 def render() -> None:
@@ -64,7 +82,14 @@ def render() -> None:
         )
         st.session_state["_brief_restored_notice_shown"] = True
 
-    options = service_names()
+    active_names, kept_extra = _service_options()
+    options = active_names + kept_extra
+
+    if not active_names:
+        st.info(
+            "Прайс пуст: добавьте услуги и цены в разделе «Настройки» — "
+            "иначе выбрать услуги нельзя."
+        )
 
     client = st.text_input(
         "Название клиента *",
@@ -82,7 +107,13 @@ def render() -> None:
         options=options,
         key="brief_services",
     )
-    st.caption(TRAINING_CATALOG_NOTE)
+    if kept_extra:
+        st.caption(
+            "Часть выбранных услуг находится в архиве прайса: выбор сохранён, "
+            "но в новых брифах эти позиции не предлагаются."
+        )
+    else:
+        st.caption("Услуги берутся из прайса — управляется в разделе «Настройки».")
     deadlines = st.text_input(
         "Сроки *",
         key="brief_deadlines",
@@ -122,6 +153,11 @@ def render() -> None:
                 "Генерация станет доступна на следующем этапе."
             ),
         )
+    st.caption(
+        "Бриф записывается в базу только кнопкой «Сохранить бриф». После "
+        "перезагрузки страницы форма восстанавливается из последнего "
+        "сохранённого брифа."
+    )
 
     if save_clicked:
         if errors:
@@ -144,8 +180,9 @@ def render() -> None:
 
     if generate_clicked:
         st.info(
-            "Генерация будет реализована на следующем этапе (Этап 3, REQ-06). "
-            "Сейчас черновик не создаётся — экран «Черновик» сообщает свой статус."
+            "Генерация будет реализована на следующем этапе (REQ-06). Сейчас "
+            "черновик не создаётся, и бриф при этом **не сохраняется** — "
+            "нажмите «Сохранить бриф», чтобы сохранить данные."
         )
 
     st.divider()

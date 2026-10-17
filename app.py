@@ -2,8 +2,9 @@
 
 Запуск: ``streamlit run app.py``
 
-На текущем этапе реализованы каркас, база данных и форма брифа. Экраны
-«Черновик», «Предпросмотр и PDF» и «История КП» сообщают о статусе разработки.
+Реализованы каркас, база данных, форма брифа и настройки (прайс и шаблон КП).
+Экраны «Черновик», «Предпросмотр и PDF» и «История КП» сообщают о статусе
+разработки.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import streamlit as st
 from vetai.config import APP_TITLE
 from vetai.db import init_database
 from vetai.ui import navigation
-from vetai.ui.screens import brief, draft, history, preview
+from vetai.ui.screens import brief, draft, history, preview, settings
 
 
 def main() -> None:
@@ -32,6 +33,8 @@ def main() -> None:
         preview.render()
     elif screen == navigation.SCREEN_HISTORY:
         history.render()
+    elif screen == navigation.SCREEN_SETTINGS:
+        settings.render()
 
 
 main()

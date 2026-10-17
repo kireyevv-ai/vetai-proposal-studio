@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS proposal_versions (
 CREATE TABLE IF NOT EXISTS price_items (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL,
-    price      NUMERIC NOT NULL,
-    is_active  INTEGER NOT NULL DEFAULT 1
+    price      INTEGER NOT NULL,            -- цена в КОПЕЙКАХ (целое, без float)
+    is_active  INTEGER NOT NULL DEFAULT 1   -- 1 — в прайсе, 0 — архив
 );
 
 CREATE TABLE IF NOT EXISTS templates (
