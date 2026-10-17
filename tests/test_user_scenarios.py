@@ -26,10 +26,12 @@ SEED_PRICES: list[tuple[str, int]] = [(SERVICE_A, 50000), (SERVICE_B, 15000)]
 
 BRIEF_FIELDS = {
     "brief_client": "ООО «Учебный клиент»",
-    "brief_deadlines": "30 дней",
     "brief_budget": "100 000 руб.",
 }
 BRIEF_TASK = "Внедрить решение"
+DEADLINE_VALUE = 30
+DEADLINE_UNIT = "календарные дни"
+DEADLINE_TEXT = "30 календарных дней"
 
 
 @pytest.fixture
@@ -85,6 +87,8 @@ def _fill_brief(at: AppTest, services: list[str]) -> None:
         at.text_input(key=key).set_value(value)
     at.text_area(key="brief_task").set_value(BRIEF_TASK)
     at.multiselect(key="brief_services").set_value(services)
+    at.number_input(key="brief_deadline_value").set_value(DEADLINE_VALUE)
+    at.selectbox(key="brief_deadline_unit").select(DEADLINE_UNIT)
     at.run()
 
 
@@ -171,7 +175,7 @@ def test_C_mandatory_sections_marked_and_delete_forbidden(db_path: Path) -> None
 def test_D_brief_saved_via_ui_restored_after_restart(db_path: Path) -> None:
     first = _new_app()
     assert any(
-        "только кнопкой «Сохранить бриф»" in value for value in _captions(first)
+        "кнопкой «Сохранить бриф»" in value for value in _captions(first)
     )
     _fill_brief(first, [SERVICE_A])
     _click_label(first, "Сохранить бриф")
@@ -182,7 +186,8 @@ def test_D_brief_saved_via_ui_restored_after_restart(db_path: Path) -> None:
     assert second.text_input(key="brief_client").value == BRIEF_FIELDS["brief_client"]
     assert second.text_area(key="brief_task").value == BRIEF_TASK
     assert second.multiselect(key="brief_services").value == [SERVICE_A]
-    assert second.text_input(key="brief_deadlines").value == BRIEF_FIELDS["brief_deadlines"]
+    assert second.number_input(key="brief_deadline_value").value == DEADLINE_VALUE
+    assert second.selectbox(key="brief_deadline_unit").value == DEADLINE_UNIT
     assert second.text_input(key="brief_budget").value == BRIEF_FIELDS["brief_budget"]
     assert any(
         "Восстановлен последний сохранённый бриф" in value for value in _infos(second)
@@ -306,3 +311,37 @@ def test_G_repeated_init_keeps_brief_and_price_data(db_path: Path) -> None:
     assert saved is not None
     assert saved.client == BRIEF_FIELDS["brief_client"]
     assert saved.services == [SERVICE_A]
+    # Сроки хранятся в каноничном виде «число + единица» (Часть Б).
+    assert saved.deadlines == DEADLINE_TEXT
+
+
+# --- Часть Б: старая неоднозначная запись срока не переинтерпретируется -----
+
+
+def test_legacy_ambiguous_deadline_is_not_auto_assigned(db_path: Path) -> None:
+    from vetai.models import Brief
+
+    brief_repository.save_brief(
+        Brief(
+            client=BRIEF_FIELDS["brief_client"],
+            task=BRIEF_TASK,
+            services=[SERVICE_A],
+            deadlines="30 дней",
+            budget=BRIEF_FIELDS["brief_budget"],
+        ),
+        db_path=db_path,
+    )
+
+    at = _new_app()
+    # Единица измерения не присваивается автоматически.
+    assert at.number_input(key="brief_deadline_value").value is None
+    assert at.selectbox(key="brief_deadline_unit").value is None
+    assert any("единицы измерения" in value for value in _captions(at))
+
+    # При повторном сохранении без указания единицы значение не переписывается
+    # в неверное каноническое представление.
+    _click_label(at, "Сохранить бриф")
+    assert any("не сохранён" in err.value.lower() for err in at.error)
+    saved = brief_repository.get_latest_brief(db_path=db_path)
+    assert saved is not None
+    assert saved.deadlines == "30 дней"

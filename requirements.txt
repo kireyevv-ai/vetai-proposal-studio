@@ -1,8 +1,12 @@
 # VETAI Proposal Studio — зависимости
-# Текущий этап: каркас приложения, SQLite и форма брифа.
+# Текущий этап: каркас, SQLite, бриф, настройки (прайс/шаблон) и генерация
+# черновика через GigaChat REST API (mock-провайдер для демо без ключа).
 
 streamlit>=1.30,<2
 python-dotenv>=1.0,<2
+
+# HTTP-клиент для официального REST API GigaChat (OAuth + chat/completions).
+requests>=2.31,<3
 
 # ReportLab понадобится на этапе экспорта PDF (пока не используется).
 reportlab>=4.0,<5

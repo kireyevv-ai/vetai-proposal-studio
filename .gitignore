@@ -3,11 +3,17 @@
 .env.*
 !.env.example
 
+# Доверенные корневые сертификаты (локальные бандлы)
+certs/
+
 # Локальные базы данных
 *.db
 *.sqlite
 *.sqlite3
 data/
+
+# Логи
+*.log
 
 # Python
 __pycache__/

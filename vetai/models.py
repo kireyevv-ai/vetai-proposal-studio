@@ -90,3 +90,51 @@ DEFAULT_TEMPLATE_SECTIONS: tuple[TemplateSection, ...] = (
 MANDATORY_SECTION_KEYS: frozenset[str] = frozenset(
     section.key for section in DEFAULT_TEMPLATE_SECTIONS if section.mandatory
 )
+
+# Разделы, которые вправе заполнять только модель — и только по данным брифа
+# (REQ-06, REQ-13). Всё остальное либо подставляется программой, либо помечается
+# как «требует уточнения» (см. политику заземления в generation._assemble_sections).
+MODEL_SECTION_KEYS: frozenset[str] = frozenset({"task", "scope"})
+
+# Разделы, которые заполняет исключительно программа из доверенных данных:
+# цены — из прайса, сроки — из брифа (REQ-10, REQ-11, REQ-12).
+CODE_SECTION_KEYS: frozenset[str] = frozenset({"pricing", "deadlines"})
+
+
+# Источники содержимого раздела черновика КП (REQ-10, REQ-12).
+SOURCE_MODEL = "model"  # текст сгенерирован AI-провайдером из данных брифа
+SOURCE_CODE = "code"  # раздел сформирован программно из доверенных данных
+SOURCE_PLACEHOLDER = "placeholder"  # нет доверенных данных — «требует уточнения»
+
+
+@dataclass(frozen=True)
+class DraftSection:
+    """Раздел сгенерированного черновика КП.
+
+    ``source`` фиксирует происхождение текста: коммерческие разделы
+    (``pricing``, ``deadlines``) всегда ``code`` — их заполняет программа
+    из прайса и брифа, а не модель (REQ-10, REQ-11, REQ-12). Разделы без
+    доверенных данных получают ``placeholder`` с пустым текстом и пометкой
+    «требует уточнения» (Часть А, п. 6).
+    """
+
+    key: str
+    title: str
+    text: str
+    source: str
+
+
+@dataclass
+class ProposalDraft:
+    """Версия черновика КП, прочитанная из базы (для экрана «Черновик»)."""
+
+    proposal_id: int
+    version_id: int
+    version: int
+    status: str
+    brief_id: int
+    provider: str
+    sections: list[DraftSection]
+    commercial_snapshot: dict
+    warnings: list[str]
+    created_at: datetime

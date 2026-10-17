@@ -28,12 +28,19 @@ SCREENS: tuple[str, ...] = (
 
 def render_navigation() -> str:
     """Нарисовать боковую навигацию и вернуть выбранный экран."""
+    # Переход на другой экран, запрошенный предыдущим запуском (например, после
+    # генерации открываем «Черновик»). Выполняется ДО создания виджета radio,
+    # иначе изменение ключа nav_screen было бы запрещено Streamlit.
+    pending = st.session_state.pop("pending_screen", None)
+    if pending in SCREENS:
+        st.session_state["nav_screen"] = pending
+
     st.sidebar.title(APP_TITLE)
     st.sidebar.caption("Учебный AI-конструктор коммерческих предложений")
     choice = st.sidebar.radio("Навигация", SCREENS, key="nav_screen")
     st.sidebar.divider()
     st.sidebar.caption(
-        "Реализованы: бриф, прайс и шаблон КП (экран «Настройки»). "
-        "Генерация, редактор и PDF будут реализованы на следующих этапах."
+        "Реализованы: бриф, генерация черновика, прайс и шаблон КП "
+        "(экран «Настройки»). Редактор и PDF будут реализованы на следующих этапах."
     )
     return choice

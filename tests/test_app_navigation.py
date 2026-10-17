@@ -57,6 +57,9 @@ def test_brief_screen_has_form(app: AppTest) -> None:
     assert "Название клиента *" in labels
     assert "Описание задачи *" in labels
     assert app.multiselect[0].label == "Услуги * (минимум одна)"
+    # Сроки вводятся как число + единица измерения (Часть Б).
+    assert app.number_input[0].label == "Сроки: значение *"
+    assert app.selectbox[0].label == "Сроки: единица измерения *"
 
 
 def test_brief_multiselect_uses_price_list(app: AppTest) -> None:
@@ -65,7 +68,7 @@ def test_brief_multiselect_uses_price_list(app: AppTest) -> None:
 
 def test_generation_blocked_when_brief_incomplete(app: AppTest) -> None:
     generate_button = app.button[1]
-    assert generate_button.label == "Сгенерировать черновик"
+    assert generate_button.label == "Сгенерировать КП"
     assert generate_button.disabled is True
 
 
@@ -73,7 +76,8 @@ def test_generation_enabled_when_brief_valid(app: AppTest) -> None:
     app.text_input(key="brief_client").set_value("ООО «Учебный клиент»")
     app.text_area(key="brief_task").set_value("Внедрить решение")
     app.multiselect(key="brief_services").set_value([SEED_PRICES[0][0]])
-    app.text_input(key="brief_deadlines").set_value("30 дней")
+    app.number_input(key="brief_deadline_value").set_value(30)
+    app.selectbox(key="brief_deadline_unit").select("календарные дни")
     app.text_input(key="brief_budget").set_value("100 000 руб.")
     app.run()
 
@@ -92,7 +96,8 @@ def test_valid_brief_is_saved(app: AppTest) -> None:
     app.text_input(key="brief_client").set_value("ООО «Учебный клиент»")
     app.text_area(key="brief_task").set_value("Внедрить решение")
     app.multiselect(key="brief_services").set_value([SEED_PRICES[0][0]])
-    app.text_input(key="brief_deadlines").set_value("30 дней")
+    app.number_input(key="brief_deadline_value").set_value(30)
+    app.selectbox(key="brief_deadline_unit").select("календарные дни")
     app.text_input(key="brief_budget").set_value("100 000 руб.")
     app.run()
     app.button[0].click().run()
@@ -113,7 +118,6 @@ def test_brief_with_empty_price_list_shows_hint(monkeypatch, tmp_path) -> None:
 @pytest.mark.parametrize(
     ("screen", "marker"),
     [
-        ("Черновик", "разработке"),
         ("Предпросмотр и PDF", "разработке"),
         ("История КП", "разработке"),
     ],
