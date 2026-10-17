@@ -11,11 +11,20 @@ import streamlit as st
 
 from vetai.models import DEFAULT_TEMPLATE_SECTIONS, MANDATORY_SECTION_KEYS, TemplateSection
 from vetai.repositories import price_repository, template_repository
+from vetai.services import excel_import
+from vetai.services.excel_import import ImportPreview, ImportResult
 from vetai.validation import format_price, parse_price_to_kopeks, validate_template_structure
 
 _STATE_SECTIONS = "tpl_sections"
 _STATE_RESET_FLAG = "_tpl_reset_requested"
 _STATE_CUSTOM_SEQ = "tpl_custom_seq"
+
+_STATE_IMPORT_NONCE = "price_import_nonce"
+_STATE_IMPORT_RESULT = "price_import_result"
+
+_XLSX_MIME = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 
 def render() -> None:
@@ -43,6 +52,8 @@ def _render_prices() -> None:
     )
 
     _render_add_price_form()
+    st.divider()
+    _render_excel_import()
     st.divider()
     _render_active_prices()
     _render_archived_prices()
@@ -78,6 +89,137 @@ def _render_add_price_form() -> None:
             st.success(
                 f"Добавлено: {name.strip()} — {format_price(price_kopeks)}"
             )
+
+
+def _render_excel_import() -> None:
+    """Импорт прайса из Excel — предпросмотр без изменения базы, затем транзакция.
+
+    REQ-47: согласованное улучшение сверх ТЗ школы. Сначала файл проверяется и
+    показывается предпросмотр с ошибками/предупреждениями по строкам, затем
+    пользователь выбирает режим и подтверждает — изменения применяются одной
+    транзакцией (частичный импорт невозможен).
+    """
+    st.markdown("**Импорт прайса из Excel (.xlsx)**")
+    st.caption(
+        "Файл проверяется без изменения базы. Обязательные колонки: «Название "
+        "услуги» и «Цена» (цена — в рублях, хранится в копейках). Изменения "
+        "применяются только по кнопке «Импортировать» одной транзакцией "
+        "(REQ-47)."
+    )
+
+    result = st.session_state.pop(_STATE_IMPORT_RESULT, None)
+    if result is not None:
+        st.success(result)
+
+    st.download_button(
+        "Скачать пустой образец Excel",
+        data=excel_import.build_sample_xlsx(),
+        file_name="obrazec_prajsa.xlsx",
+        mime=_XLSX_MIME,
+        key="price_import_sample",
+    )
+
+    mode_label = st.radio(
+        "Режим импорта",
+        list(excel_import.MODE_LABELS.values()),
+        key="price_import_mode",
+        help=(
+            "«Только новые услуги» никогда не меняет цены уже существующих "
+            "позиций. «Новые и обновить существующие цены» обновляет цену "
+            "только у активных совпадений по названию."
+        ),
+    )
+    mode = next(
+        key
+        for key, label in excel_import.MODE_LABELS.items()
+        if label == mode_label
+    )
+
+    # nonce меняется после успешного импорта — загрузчик очищается.
+    nonce = int(st.session_state.get(_STATE_IMPORT_NONCE, 0))
+    uploaded = st.file_uploader(
+        "Файл прайса (.xlsx)",
+        type=["xlsx"],
+        key=f"price_import_file_{nonce}",
+    )
+    if not uploaded:
+        return
+
+    try:
+        preview = excel_import.build_preview(uploaded.getvalue(), mode)
+    except ValueError as error:
+        st.error(f"Файл не принят, база не изменена: {error}")
+        return
+
+    _render_import_preview(preview)
+
+
+def _render_import_preview(preview: ImportPreview) -> None:
+    """Показать предпросмотр и кнопку подтверждения (без изменения базы)."""
+    st.write(
+        f"Прочитано строк: {len(preview.rows)}. "
+        f"Новых: {preview.new_count}. "
+        f"Обновлений: {preview.update_count}. "
+        f"Пропущено: {preview.skip_count}. "
+        f"Ошибок: {preview.error_count}."
+    )
+
+    for message in preview.errors:
+        st.error(message)
+    for message in preview.warnings:
+        st.warning(message)
+    if preview.error_count:
+        st.warning(
+            f"Строк с ошибками: {preview.error_count} — они будут пропущены "
+            "при импорте. Исправьте файл и загрузите его снова, чтобы "
+            "импортировать эти позиции."
+        )
+
+    table = [
+        {
+            "Строка": row.row_number,
+            "Название": row.name or "—",
+            "Цена": row.price_display,
+            "Действие": row.status,
+            "Комментарий": row.message,
+        }
+        for row in preview.rows
+    ]
+    st.dataframe(table, key="price_import_preview")
+
+    if preview.actionable_count == 0:
+        st.info(
+            "Нет строк для импорта: проверьте ошибки выше или выберите "
+            "другой режим импорта."
+        )
+        return
+
+    if st.button(
+        f"Импортировать ({preview.actionable_count})",
+        type="primary",
+        key="price_import_confirm",
+    ):
+        _apply_import(preview)
+
+
+def _apply_import(preview: ImportPreview) -> None:
+    """Применить предпросмотр одной транзакцией и перерисовать экран."""
+    try:
+        import_result: ImportResult = excel_import.apply_import(preview)
+    except ValueError as error:
+        st.error(
+            f"Импорт не выполнен, база не изменена: {error}"
+        )
+        return
+
+    st.session_state[_STATE_IMPORT_RESULT] = (
+        f"Импорт выполнен: добавлено {import_result.added}, "
+        f"обновлено {import_result.updated}."
+    )
+    st.session_state[_STATE_IMPORT_NONCE] = (
+        int(st.session_state.get(_STATE_IMPORT_NONCE, 0)) + 1
+    )
+    st.rerun()
 
 
 def _render_active_prices() -> None:

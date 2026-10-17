@@ -183,6 +183,61 @@ def set_archived(
         conn.close()
 
 
+def apply_price_import(
+    adds: list[tuple[str, int]],
+    updates: list[tuple[int, int]],
+    db_path: str | Path | None = None,
+) -> tuple[int, int]:
+    """Применить импорт прайса **одной транзакцией** (REQ-47).
+
+    Вставка новых позиций и обновление цен существующих выполняются в рамках
+    одной транзакции: при любой ошибке (некорректные данные, конфликт названий,
+    сбой БД) выполняется ``rollback`` и **ничего не записывается** — частичный
+    импорт невозможен.
+
+    Цены принимаются в копейках (целые) и проверяются так же, как при ручном
+    добавлении: деньги не проходят через float (REQ-10, REQ-12, REQ-26).
+
+    Returns:
+        ``(added_count, updated_count)``.
+
+    Raises:
+        ValueError: некорректная позиция или конфликт названий; транзакция
+            откатена, база не изменена.
+    """
+    conn = connect(db_path)
+    try:
+        for name, price_kopeks in adds:
+            checked_name = _check_name(name)
+            checked_price = _check_price(price_kopeks)
+            _ensure_name_unique(conn, checked_name)
+            conn.execute(
+                "INSERT INTO price_items (name, price, is_active) VALUES (?, ?, 1)",
+                (checked_name, checked_price),
+            )
+
+        for item_id, price_kopeks in updates:
+            checked_price = _check_price(price_kopeks)
+            row = conn.execute(
+                "SELECT id FROM price_items WHERE id = ? AND is_active = 1",
+                (item_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("Позиция прайса для обновления не найдена.")
+            conn.execute(
+                "UPDATE price_items SET price = ? WHERE id = ?",
+                (checked_price, item_id),
+            )
+
+        conn.commit()
+        return len(adds), len(updates)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def is_referenced_in_briefs(
     name: str, db_path: str | Path | None = None
 ) -> bool:
