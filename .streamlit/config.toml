@@ -1,0 +1,29 @@
+# Визуальная тема «VETAI · Конструктор КП».
+# Направление: Quiet Luxury + функциональный Corporate Precision.
+# Базовые цвета, шрифты и радиусы задаются нативными средствами Streamlit;
+# отступы, типографика заголовков и спокойные поверхности — в vetai/ui/theme.py.
+
+[theme]
+base = "light"
+primaryColor = "#173F36"
+backgroundColor = "#F7F7F4"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#17221F"
+borderColor = "#E3E7E3"
+linkColor = "#173F36"
+baseRadius = "0.5rem"
+font = "sans serif"
+headingFont = "Georgia, 'Times New Roman', serif"
+baseFontSize = 15
+showSidebarBorder = true
+
+[theme.sidebar]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F1F3F0"
+borderColor = "#E3E7E3"
+
+# Скрыть кнопку Deploy и developer-опции (rerun, clear cache);
+# просмотрщикские элементы меню (тема, печать) сохраняются.
+# Официальная опция Streamlit client.toolbarMode (штатное средство).
+[client]
+toolbarMode = "viewer"

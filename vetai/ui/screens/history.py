@@ -13,6 +13,16 @@ import streamlit as st
 
 from vetai.repositories import proposal_repository
 
+_STATUS_LABELS = {
+    "generated": "сгенерировано",
+    "edited": "изменено вручную",
+    "exported": "отправлено в PDF",
+}
+
+
+def _status_label(status: str) -> str:
+    return _STATUS_LABELS.get(status, status)
+
 
 def _fmt_iso(value: str | None) -> str:
     if not value:
@@ -38,10 +48,9 @@ def render() -> None:
     for p in proposals:
         rows.append(
             {
-                "КП": f"#{p['proposal_id']}",
-                "Клиент": p["client"],
+                "Документ": f"Коммерческое предложение для {p['client']}",
                 "Текущая версия": p["current_version"],
-                "Статус текущей": p["status"],
+                "Состояние текущей": _status_label(p["status"]),
                 "Обновлено": _fmt_iso(p["updated_at"]),
                 "Всего версий": p["versions_count"],
             }
@@ -49,7 +58,7 @@ def render() -> None:
     st.dataframe(rows, use_container_width=True, hide_index=True)
 
     labels = {
-        f"#{p['proposal_id']} — {p['client']} (версия {p['current_version']})": p
+        f"Коммерческое предложение для {p['client']} — версия {p['current_version']}": p
         for p in proposals
     }
     choice = st.selectbox("Выберите КП", list(labels), key="history_proposal")
@@ -61,7 +70,7 @@ def render() -> None:
         return
 
     vlabels = {
-        f"Версия {v['version']} · {v['status']} · {_fmt_iso(v['created_at'])}": v
+        f"Версия {v['version']} · {_status_label(v['status'])} · {_fmt_iso(v['created_at'])}": v
         for v in versions
     }
     vchoice = st.selectbox("Выберите версию", list(vlabels), key="history_version")
@@ -79,5 +88,6 @@ def render() -> None:
         st.rerun()
 
     st.caption(
-        "Доступны ранее сохранённые версии КП; редактирование открытой версии создаст новую версию с тем же номером расчёта текущей версии (добавляется новая версия)."
+        "Открытая версия доступна для просмотра и редактирования. При "
+        "сохранении правок создаётся новая версия — прежние остаются без изменений."
     )

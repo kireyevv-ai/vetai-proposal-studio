@@ -62,10 +62,12 @@ def test_generate_creates_draft_and_opens_draft_screen(
 
     assert not app.exception
     assert app.radio[0].value == "Черновик"
-    assert any("сгенерирован" in msg.value.lower() for msg in app.success)
+    assert any("подготовлено" in msg.value.lower() for msg in app.success)
     subheaders = [block.value for block in app.subheader]
-    assert "Стоимость" in subheaders
-    assert "Сроки" in subheaders
+    assert any("Стоимость" in title for title in subheaders)
+    assert any("Сроки" in title for title in subheaders)
+    # Разделы нумеруются как визуальное оформление макета («01. …»).
+    assert any("01. " in title for title in subheaders)
 
 
 def test_generation_shows_pricing_from_price_list(
@@ -99,9 +101,51 @@ def test_draft_marks_sections_without_trusted_data(
     )
     assert "ручная доработка" not in rendered
     assert "раздел не сформирован моделью" not in rendered.lower()
-    # Разделы «О компании» и «Прочие условия» помечены как требующие уточнения.
-    infos = "\n".join(info.value for info in app.info)
-    assert infos.lower().count("требует уточнения") >= 2
+    # Разделы «О компании» и «Прочие условия» помечены как требующие уточнения
+    # (некритические замечания собраны в блоке «Рекомендации по улучшению»).
+    rendered_all = rendered + "\n" + "\n".join(info.value for info in app.info)
+    assert rendered_all.lower().count("требует уточнения") >= 2
+
+
+def test_draft_screen_shows_document_without_info_panel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Рабочая область — широкий редактор без правой панели; рекомендации —
+    в одном сворачиваемом блоке под редактором (без дублей)."""
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    app = _new_app(monkeypatch, tmp_path)
+    _fill_valid_brief(app)
+    app.button[1].click().run()
+
+    assert not app.exception
+    markdown_text = "\n".join(block.value for block in app.markdown)
+    captions = "\n".join(block.value for block in app.caption)
+
+    assert "РЕДАКТОР КП" in markdown_text
+    assert "Коммерческое предложение" in markdown_text
+    # Правая информационная панель удалена.
+    assert "О документе" not in markdown_text
+    assert "Проверка документа" not in markdown_text
+    assert "Коммерческие условия" not in markdown_text
+    # Клиент, версия и дата показаны компактно под заголовком.
+    assert "Учебный клиент" in captions
+    assert "Версия: 1" in captions
+    assert "Сохранено:" in captions
+
+    assert "Рекомендации по улучшению" in [exp.label for exp in app.expander]
+    # Все уникальные замечания доступны в рекомендациях — без дублей.
+    assert (
+        markdown_text.count(
+            "Раздел «О компании» не заполнен — требует уточнения."
+        )
+        == 1
+    )
+    assert (
+        markdown_text.count(
+            "Раздел «Прочие условия» не заполнен — требует уточнения."
+        )
+        == 1
+    )
 
 
 def test_draft_shows_deadline_with_explicit_unit(

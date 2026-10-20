@@ -100,7 +100,7 @@ def render_price_section(data: CommercialData) -> str:
     if data.total_kopeks is None:
         lines.append(
             "Итоговая стоимость не определена: по части позиций нет цены в "
-            "прайсе. Уточните прайс перед отправкой КП."
+            "прайсе."
         )
     else:
         lines.append(f"Итого: {format_price(data.total_kopeks)}.")

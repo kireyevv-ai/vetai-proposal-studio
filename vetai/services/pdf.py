@@ -19,8 +19,9 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, Spacer
 
+from vetai.config import LOGO_PATH
 from vetai.models import SOURCE_PLACEHOLDER, ProposalDraft
 
 BRAND_NAME = "VETAI"
@@ -130,6 +131,24 @@ def _styles() -> dict[str, ParagraphStyle]:
     }
 
 
+def _logo_flowable() -> RLImage | None:
+    """Оригинальный логотип VETAI для верхней части PDF (если файл доступен)."""
+    if not LOGO_PATH.exists():
+        return None
+    try:
+        from PIL import Image as PILImage
+
+        with PILImage.open(LOGO_PATH) as image:
+            width_px, height_px = image.size
+    except Exception:
+        return None
+    if not width_px or not height_px:
+        return None
+    width = 45 * mm
+    height = width * height_px / width_px
+    return RLImage(str(LOGO_PATH), width=width, height=height, hAlign="LEFT")
+
+
 def build_pdf(
     draft: ProposalDraft,
     client: str = "",
@@ -151,7 +170,13 @@ def build_pdf(
     )
 
     story = []
-    story.append(Paragraph(BRAND_NAME, styles["brand"]))
+    logo = _logo_flowable()
+    if logo is not None:
+        # Название бренда уже содержит логотип — текстом его не дублируем.
+        story.append(logo)
+        story.append(Spacer(1, 8))
+    else:
+        story.append(Paragraph(BRAND_NAME, styles["brand"]))
     story.append(Paragraph(title, styles["title"]))
     story.append(Spacer(1, 4))
     meta_parts = []

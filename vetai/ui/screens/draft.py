@@ -1,15 +1,22 @@
 """Экран «Черновик» — редактор КП (REQ-15..REQ-17).
 
-Показывает текущую версию КП: коммерческие разделы (стоимость, сроки) —
-только для чтения (формируются кодом из прайса/брифа), прочие разделы — доступны
-для ручного редактирования. Сохранение изменённого текста создаёт новую версию
-``edited`` (без изменения старых версий). Предупреждения защитных проверок
-выводятся отдельно от текста КП.
+Основную часть экрана занимает широкий редактор КП. Клиент, версия и дата
+сохранения показаны компактно под заголовком. Коммерческие разделы (стоимость,
+сроки) показываются только для чтения: они формируются кодом из прайса/брифа.
+Прочие разделы доступны для ручного редактирования. Сохранение изменённого
+текста создаёт новую версию ``edited`` (старые версии не меняются).
+
+Защитные проверки не изменяются (см. ``services.export_checks``). Критические
+замечания, блокирующие экспорт, остаются заметными на экране предпросмотра/PDF
+рядом с действием экспорта. Некритические замечания показаны под редактором в
+одном сворачиваемом блоке «Рекомендации по улучшению» (по умолчанию закрыт);
+все уникальные замечания доступны без потери информации.
 """
 
 from __future__ import annotations
 
 import json
+import re
 
 import streamlit as st
 
@@ -23,6 +30,8 @@ from vetai.models import (
 )
 from vetai.repositories import brief_repository, proposal_repository
 from vetai.services import commercial, export_checks
+
+_SECTION_RE = re.compile(r"«([^»]+)»")
 
 
 def _resolve_draft() -> ProposalDraft | None:
@@ -55,14 +64,15 @@ def _ensure_state(draft: ProposalDraft) -> None:
         st.session_state[f"edit_text_{section.key}"] = section.text
 
 
-def _render_meta(draft: ProposalDraft) -> None:
-    created = draft.created_at.astimezone().strftime("%d.%m.%Y %H:%M")
-    st.caption(
-        f"Версия {draft.version} · статус: {draft.status} · провайдер: «{draft.provider}» · создано: {created} · бриф ID {draft.brief_id} · КП ID {draft.proposal_id}."
-    )
-    st.caption(
-        "Коммерческие разделы (Стоимость, Сроки) формируются программой из прайса и брифа (REQ-10, REQ-12) — не редактируются вручную."
-    )
+# --- Контекст документа ----------------------------------------------------
+
+
+def _client_name(draft: ProposalDraft) -> str:
+    brief = brief_repository.get_brief(draft.brief_id)
+    return brief.client if brief is not None else ""
+
+
+# --- Блокировка перехода при несохранённых изменениях ----------------------
 
 
 def _render_blocked_notice() -> None:
@@ -82,11 +92,7 @@ def _render_blocked_notice() -> None:
             st.rerun()
 
 
-def _render_warnings(draft: ProposalDraft) -> None:
-    if draft.warnings:
-        st.warning("Требует ручной проверки:")
-        for warning in draft.warnings:
-            st.write(f"- {warning}")
+# --- Проверка КП (некритические рекомендации) ------------------------------
 
 
 def _current_sections(draft: ProposalDraft) -> list[DraftSection]:
@@ -108,6 +114,134 @@ def _current_sections(draft: ProposalDraft) -> list[DraftSection]:
     return result
 
 
+def _collect_warnings(draft: ProposalDraft) -> list[str]:
+    """Собрать уникальные некритические замечания защитной проверки."""
+    current = _current_sections(draft)
+    snapshot = st.session_state.get("editor_snapshot") or dict(
+        draft.commercial_snapshot
+    )
+    check = export_checks.check_sections(current, snapshot)
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for message in check.warnings:
+        if message not in seen:
+            seen.add(message)
+            warnings.append(message)
+    return warnings
+
+
+def _group_warnings(warnings: list[str]) -> list[tuple[str, list[str]]]:
+    groups: dict[str, list[str]] = {}
+    order: list[str] = []
+    for message in warnings:
+        match = _SECTION_RE.search(message)
+        name = match.group(1) if match else "Общие замечания"
+        if name not in groups:
+            groups[name] = []
+            order.append(name)
+        groups[name].append(message)
+    return [(name, groups[name]) for name in order]
+
+
+# --- Документ (центральная зона) -------------------------------------------
+
+
+def _render_actions(draft: ProposalDraft) -> None:
+    dirty = _is_dirty(draft)
+    st.session_state["editor_dirty"] = dirty
+    st.session_state["unsaved_changes"] = dirty
+
+    with st.container(key="editor_actions", horizontal=True, gap="small"):
+        if st.button(
+            "Сохранить изменения",
+            key="editor_save",
+            type="primary",
+            icon=":material/save:",
+        ):
+            _save(draft)
+            st.rerun()
+        if st.button(
+            "Пересчитать стоимость и сроки",
+            key="editor_refresh_commercial",
+            icon=":material/refresh:",
+        ):
+            _refresh_commercial(draft)
+            st.rerun()
+    if dirty:
+        st.caption("Есть несохранённые изменения.")
+
+
+def _render_canvas(draft: ProposalDraft) -> None:
+    sections = st.session_state.get("editor_sections", [])
+    for index, section in enumerate(sections, start=1):
+        key = section["key"]
+        locked = key in CODE_SECTION_KEYS
+        head_cols = st.columns([1, 0.32], gap="small", vertical_alignment="center")
+        with head_cols[0]:
+            st.subheader(f"{index:02d}. {section['title']}")
+        with head_cols[1]:
+            with st.container(key=f"doc_tag_{index}"):
+                st.caption("Защищённый блок" if locked else "Текстовый раздел")
+        if locked:
+            with st.container(key=f"doc_locked_{key}"):
+                for line in section["text"].splitlines():
+                    if line.strip():
+                        st.markdown(line)
+                st.caption(
+                    "Заполняется автоматически по прайсу и брифу — вручную не редактируется."
+                )
+        else:
+            st.text_area(
+                section["title"],
+                key=f"edit_text_{key}",
+                height=100,
+                label_visibility="collapsed",
+                placeholder="Заполните раздел",
+            )
+        if index != len(sections):
+            st.divider()
+
+
+def _render_head(draft: ProposalDraft | None) -> None:
+    """Шапка документа: надзаголовок, крупный заголовок, метаданные."""
+    with st.container(key="editor_head"):
+        st.markdown("РЕДАКТОР КП")
+        st.markdown("### Коммерческое предложение")
+        if draft is not None:
+            client = _client_name(draft)
+            created = draft.created_at.astimezone().strftime("%d.%m.%Y %H:%M")
+            meta = [f"Версия: {draft.version}", f"Сохранено: {created}"]
+            if client:
+                meta.insert(0, f"Клиент: {client}")
+            st.caption(" · ".join(meta))
+
+
+def _render_document(draft: ProposalDraft, flash: str | None = None) -> None:
+    _render_head(draft)
+    if flash:
+        st.success(flash)
+    _render_actions(draft)
+    with st.container(key="doc_canvas"):
+        _render_canvas(draft)
+
+
+# --- Рекомендации (сворачиваемый блок под редактором) ----------------------
+
+
+def _render_recommendations(draft: ProposalDraft) -> None:
+    warnings = _collect_warnings(draft)
+    if not warnings:
+        return
+    with st.expander("Рекомендации по улучшению", expanded=False):
+        for name, group in _group_warnings(warnings):
+            st.markdown(f"*{name}*")
+            for message in group:
+                st.write(message)
+
+
+# --- Изменения версии ------------------------------------------------------
+
+
 def _normalize(text: str) -> str:
     return (text or "").strip()
 
@@ -122,31 +256,6 @@ def _is_dirty(draft: ProposalDraft) -> bool:
         if _normalize(sec.text) != _normalize(b.text):
             return True
     return False
-
-
-def _render_sections(draft: ProposalDraft) -> None:
-    for section in st.session_state.get("editor_sections", []):
-        st.subheader(section["title"])
-        key = section["key"]
-        if key in CODE_SECTION_KEYS:
-            st.text(section["text"])
-            st.caption(
-                "Раздел формируется программой из доверенных данных (прайс, бриф) и не редактируется вручную (REQ-10, REQ-12)."
-            )
-        else:
-            st.text_area(
-                section["title"],
-                key=f"edit_text_{key}",
-                height=140,
-                label_visibility="collapsed",
-            )
-            if section["source"] == SOURCE_PLACEHOLDER and not st.session_state.get(
-                f"edit_text_{key}", ""
-            ).strip():
-                st.info(
-                    "Требует уточнения: для этого раздела нет доверенных данных. Заполните вручную (REQ-16)."
-                )
-        st.divider()
 
 
 def _refresh_commercial(draft: ProposalDraft) -> None:
@@ -173,9 +282,10 @@ def _refresh_commercial(draft: ProposalDraft) -> None:
         data, brief.deadlines
     )
     st.session_state["draft_flash"] = (
-        "Коммерческий блок обновлён из доверенных данных. Нажмите «Сохранить изменения»."
+        "Стоимость и сроки пересчитаны. Нажмите «Сохранить изменения», "
+        "чтобы сохранить новую версию КП."
         if changed
-        else "Коммерческий блок уже соответствует доверенным данным."
+        else "Стоимость и сроки уже актуальны — изменения не требуются."
     )
 
 
@@ -218,37 +328,17 @@ def _save(draft: ProposalDraft) -> None:
     st.session_state["editor_version_id"] = version_id_new
     st.session_state["editor_base_version_id"] = None
     st.session_state.pop("preview_version_id", None)
-    st.session_state["draft_flash"] = f"Сохранено: создана версия {version_new} (статус: edited)."
-
-
-def _render_actions(draft: ProposalDraft) -> None:
-    dirty = _is_dirty(draft)
-    st.session_state["editor_dirty"] = dirty
-    st.session_state["unsaved_changes"] = dirty
-
-    if dirty:
-        st.warning("Есть несохранённые изменения — не забудьте сохранить.")
-
-    cols = st.columns(3)
-    if cols[0].button("Сохранить изменения", key="editor_save"):
-        _save(draft)
-        st.rerun()
-    if cols[1].button("Обновить коммерческий блок из доверенных данных", key="editor_refresh_commercial"):
-        _refresh_commercial(draft)
-        st.rerun()
-    if cols[2].button("Обновить", key="editor_refresh_view"):
-        st.rerun()
+    st.session_state["draft_flash"] = f"Сохранено: создана версия {version_new}."
 
 
 def render() -> None:
-    st.header("Черновик с редактором")
-
     flash = st.session_state.pop("draft_flash", None)
-    if flash:
-        st.success(flash)
 
     draft = _resolve_draft()
     if draft is None:
+        _render_head(None)
+        if flash:
+            st.success(flash)
         st.info(
             "Черновик ещё не сгенерирован. Заполните бриф на экране «Бриф» и нажмите «Сгенерировать КП»."
         )
@@ -256,7 +346,5 @@ def render() -> None:
 
     _ensure_state(draft)
     _render_blocked_notice()
-    _render_meta(draft)
-    _render_warnings(draft)
-    _render_sections(draft)
-    _render_actions(draft)
+    _render_document(draft, flash)
+    _render_recommendations(draft)

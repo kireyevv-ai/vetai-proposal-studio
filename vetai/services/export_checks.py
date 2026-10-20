@@ -1,8 +1,9 @@
-"""Защитная проверка КП перед экспортом PDF (REQ-14, Задача 3).
+"""Защитная проверка КП перед экспортом PDF.
 
 Критические ошибки блокируют экспорт (пустые обязательные разделы, расхождение
-цен/сроков с доверенными данными). Предупреждения — не блокируют, сигнализируют
-о возможных неподтверждённых формулировках и незаполненных разделах.
+цен/сроков с прайсом и брифом, отсутствие цен в прайсе). Предупреждения — не
+блокируют, сигнализируют о возможных неподтверждённых формулировках и
+незаполненных разделах.
 """
 
 from __future__ import annotations
@@ -10,13 +11,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from vetai.models import (
-    CODE_SECTION_KEYS,
+    DEFAULT_TEMPLATE_SECTIONS,
     MANDATORY_SECTION_KEYS,
     SOURCE_CODE,
     SOURCE_PLACEHOLDER,
     ProposalDraft,
 )
 from vetai.services import commercial, text_checks
+
+_SECTION_TITLES = {section.key: section.title for section in DEFAULT_TEMPLATE_SECTIONS}
 
 
 @dataclass
@@ -36,21 +39,30 @@ def _normalize(text: str) -> str:
 
 
 def check_sections(sections: list, snapshot: dict) -> ExportCheck:
-    """Проверить набор разделов по снимку доверенных данных."""
+    """Проверить набор разделов по снимку коммерческих данных."""
     check = ExportCheck()
     by_key = {getattr(s, "key", ""): s for s in sections}
 
     # Критичное: обязательные разделы присутствуют и заполнены
     for key in MANDATORY_SECTION_KEYS:
         section = by_key.get(key)
+        title = _SECTION_TITLES.get(key, key)
         if section is None:
-            check.critical.append(f"Обязательный раздел отсутствует: {key}.")
+            check.critical.append(f"Обязательный раздел «{title}» отсутствует.")
             continue
         if not getattr(section, "text", "").strip():
-            title = getattr(section, "title", key)
             check.critical.append(f"Обязательный раздел «{title}» не заполнен.")
 
-    # Критичное: коммерческие разделы совпадают с доверенными данными
+    # Критичное: у части услуг нет цены — итог не рассчитан
+    missing = [str(x) for x in (snapshot.get("missing", []) or [])] if snapshot else []
+    if missing:
+        check.critical.append(
+            "Не указана стоимость одной или нескольких услуг: "
+            + ", ".join(missing)
+            + "."
+        )
+
+    # Критичное: коммерческие разделы совпадают с расчётом по прайсу и брифу
     expected = commercial.expected_sections(snapshot) if snapshot else {}
     for key, exp in expected.items():
         section = by_key.get(key)
@@ -59,7 +71,8 @@ def check_sections(sections: list, snapshot: dict) -> ExportCheck:
         if _normalize(getattr(section, "text", "")) != _normalize(exp):
             title = getattr(section, "title", key)
             check.critical.append(
-                f"Раздел «{title}» не совпадает с доверенными данными (возможна подмена цен/сроков)."
+                f"Раздел «{title}» изменён вручную — стоимость или сроки "
+                "не совпадают с расчётом по прайсу и брифу."
             )
 
     # Предупреждения: незаполненные и рискованные формулировки

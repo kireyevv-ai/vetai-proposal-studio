@@ -21,7 +21,11 @@ DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_DATABASE_PATH = DATA_DIR / "vetai_proposal_studio.db"
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
-APP_TITLE = "VETAI Proposal Studio"
+APP_TITLE = "VETAI · Конструктор КП"
+
+# Логотип бренда (оригинальный файл в корне проекта). Используется в боковой
+# панели и в PDF. Если файла нет — вызывающий код показывает текстовый бренд.
+LOGO_PATH = PROJECT_ROOT / "vetai_logo_black.png"
 
 
 def get_database_path() -> Path:

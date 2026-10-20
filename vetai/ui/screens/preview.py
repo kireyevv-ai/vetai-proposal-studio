@@ -94,9 +94,7 @@ def render() -> None:
     client = _client_name(draft.brief_id)
     created = draft.created_at.astimezone().strftime("%d.%m.%Y %H:%M")
 
-    st.caption(
-        f"Версия {draft.version} · статус: {draft.status} · создано: {created} · КП ID {draft.proposal_id} · бриф ID {draft.brief_id}."
-    )
+    st.caption(f"Версия {draft.version} · создана: {created}.")
 
     proposal = proposal_repository.get_proposal(draft.proposal_id)
     current_version = int(proposal["current_version"]) if proposal else None
@@ -157,5 +155,7 @@ def render() -> None:
             pass
 
     st.caption(
-        "Предупреждения защитных проверок выводятся только здесь; PDF формируется без служебных сообщений. Эвристики не гарантируют обнаружение всех ошибок — финальная проверка выполняется человеком (REQ-14)."
+        "Предупреждения защитных проверок выводятся только здесь и не "
+        "попадают в PDF. Автоматические проверки не гарантируют обнаружение "
+        "всех ошибок — перед отправкой проверьте документ."
     )

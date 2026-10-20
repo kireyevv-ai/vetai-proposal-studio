@@ -431,6 +431,9 @@ def test_I_pdf_contains_edited_text_without_service_notes(db_path: Path) -> None
     assert "Требует уточнения" not in text
     assert "требует уточнения" not in text.lower()
     assert "разработке" not in text.lower()
+    # В верхней части PDF — оригинальный логотип (растровое изображение).
+    if pdf.LOGO_PATH.exists():
+        assert re.search(rb"/Subtype\s*/Image", raw)
 
 
 # --- J: сохранение без изменений не создаёт версию ---------------------------

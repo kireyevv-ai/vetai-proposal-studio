@@ -89,10 +89,7 @@ def render() -> None:
 
     restored_id = st.session_state.get("brief_restored_id")
     if restored_id and not st.session_state.get("_brief_restored_notice_shown"):
-        st.info(
-            f"Восстановлен последний сохранённый бриф (ID {restored_id}). "
-            "Можно продолжить работу."
-        )
+        st.info("Восстановлен последний сохранённый бриф — можно продолжить работу.")
         st.session_state["_brief_restored_notice_shown"] = True
 
     active_names, kept_extra = _service_options()
@@ -186,25 +183,24 @@ def render() -> None:
             "Сгенерировать КП",
             disabled=bool(errors),
             help=(
-                "Кнопка заблокирована, пока бриф невалиден."
+                "Кнопка заблокирована, пока бриф не заполнен полностью."
                 if errors
-                else "Сохранить бриф и сгенерировать черновик КП через AI."
+                else "Сохранить бриф и сгенерировать черновик КП."
             ),
         )
     st.caption(
-        "Бриф записывается в базу кнопкой «Сохранить бриф», а также "
-        "автоматически перед генерацией. После перезагрузки страницы форма "
-        "восстанавливается из последнего сохранённого брифа."
+        "Бриф сохраняется кнопкой «Сохранить бриф» и автоматически перед "
+        "генерацией; после перезагрузки страницы форма восстанавливается."
     )
 
     if save_clicked:
         if errors:
             st.session_state["brief_errors"] = errors
         else:
-            brief_id = brief_repository.save_brief(brief)
+            brief_repository.save_brief(brief)
             st.session_state["brief_errors"] = []
             st.session_state.pop("brief_restored_id", None)
-            st.session_state["brief_save_flash"] = f"Бриф сохранён (ID {brief_id})."
+            st.session_state["brief_save_flash"] = "Бриф сохранён."
 
     persisted_errors = st.session_state.get("brief_errors")
     if persisted_errors:
@@ -221,8 +217,7 @@ def render() -> None:
 
     st.divider()
     st.caption(
-        "Брифы хранятся локально в базе SQLite. Используйте только обезличенные "
-        "учебные данные (REQ-38)."
+        "Брифы хранятся локально. Используйте только учебные обезличенные данные."
     )
 
 
@@ -233,21 +228,18 @@ def _handle_generation(brief: Brief) -> None:
     st.session_state.pop("brief_restored_id", None)
 
     try:
-        with st.spinner("Генерирую черновик КП через AI-провайдера…"):
-            result = generation.generate_draft(brief_id)
+        with st.spinner("Генерирую черновик КП…"):
+            generation.generate_draft(brief_id)
     except AIProviderError as error:
         st.error(
             "Черновик не создан. "
             + error.user_message()
-            + f" Бриф сохранён (ID {brief_id}) — можно повторить генерацию."
+            + " Бриф сохранён — можно повторить генерацию."
         )
     except ValueError as error:
         st.error(str(error))
     else:
-        st.session_state["draft_flash"] = (
-            f"Черновик КП сгенерирован (версия {result.version}, "
-            f"провайдер «{result.provider}»)."
-        )
+        st.session_state["draft_flash"] = "Коммерческое предложение подготовлено."
         st.session_state.pop("preview_version_id", None)
         st.session_state["pending_screen"] = navigation.SCREEN_DRAFT
         st.rerun()

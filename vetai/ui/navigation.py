@@ -7,9 +7,11 @@
 
 from __future__ import annotations
 
+import base64
+
 import streamlit as st
 
-from vetai.config import APP_TITLE
+from vetai.config import LOGO_PATH
 
 SCREEN_BRIEF = "Бриф"
 SCREEN_DRAFT = "Черновик"
@@ -47,13 +49,20 @@ def render_navigation() -> str:
     # Снять флаг заблокированного перехода при явном навигации
     st.session_state.pop("nav_blocked_target", None)
 
-    st.sidebar.title(APP_TITLE)
-    st.sidebar.caption("Учебный AI-конструктор коммерческих предложений")
+    # Логотип уже содержит название бренда — отдельную надпись не дублируем.
+    if LOGO_PATH.exists():
+        with st.sidebar.container(key="brand"):
+            logo_data = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
+            st.markdown(
+                f'<img src="data:image/png;base64,{logo_data}" alt="VETAI"'
+                f' style="display:block; width:100%; height:auto; margin:0 auto;" />',
+                unsafe_allow_html=True,
+            )
+            st.caption("Конструктор КП")
+    else:
+        st.sidebar.title("VETAI")
+        st.sidebar.caption("Конструктор КП")
     choice = st.sidebar.radio(
         "Навигация", SCREENS, key="nav_screen", on_change=_on_nav_change
-    )
-    st.sidebar.divider()
-    st.sidebar.caption(
-        "Этап №5: редактор КП, версии, предпросмотр и экспорт PDF, история КП."
     )
     return choice
